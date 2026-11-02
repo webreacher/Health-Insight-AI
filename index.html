@@ -1,0 +1,1332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3f5f8" />
+    <title>Health Insight AI | Predictive Risk Assessment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+          "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.9/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+import React, { useState, useMemo, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import { 
+  Activity, 
+  Settings, 
+  HelpCircle, 
+  FileText, 
+  CheckCircle2, 
+  Clock, 
+  ShieldCheck, 
+  Sliders, 
+  X, 
+  ChevronRight,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  RefreshCw,
+  Edit3,
+  Download,
+  Upload,
+  Printer,
+  FileSpreadsheet,
+  FileJson,
+  User,
+  AlertCircle
+} from 'lucide-react';
+
+// Monthly longitudinal baseline data points
+const DEFAULT_12M_DATA = [
+  { month: 'Jan', bp: 146, glucose: 104 },
+  { month: 'Feb', bp: 150, glucose: 108 },
+  { month: 'Mar', bp: 148, glucose: 106 },
+  { month: 'Apr', bp: 155, glucose: 114 }, // Target snapshot in screenshot
+  { month: 'May', bp: 158, glucose: 118 },
+  { month: 'Jun', bp: 154, glucose: 112 },
+  { month: 'Jul', bp: 150, glucose: 109 },
+  { month: 'Aug', bp: 148, glucose: 107 },
+  { month: 'Sep', bp: 150, glucose: 110 },
+  { month: 'Oct', bp: 148, glucose: 108 },
+  { month: 'Nov', bp: 146, glucose: 105 },
+  { month: 'Dec', bp: 144, glucose: 103 },
+];
+
+const PRESET_PATIENTS = {
+  marcus: {
+    id: 'PT-98124',
+    name: 'Marcus Vance',
+    gender: 'Male',
+    biometrics: { age: 62, bmi: 31.2, hba1c: 6.4, ldl: 148, bpSys: 143, bpDia: 89, egfr: 78 },
+    historicalVitals: DEFAULT_12M_DATA,
+    cvComment: 'Elevated troponin T coupled with persistent hypertension.',
+    t2Comment: 'HbA1c stabilizing; insulin sensitivity improving.',
+    renalComment: 'GFR within standard deviation for age group.',
+    cvDelta: '+4.2%',
+    t2Delta: '-0.8%',
+    renalDelta: 'FLAT'
+  },
+  elena: {
+    id: 'PT-64219',
+    name: 'Elena Rostova',
+    gender: 'Female',
+    biometrics: { age: 48, bmi: 24.1, hba1c: 5.6, ldl: 112, bpSys: 122, bpDia: 78, egfr: 94 },
+    historicalVitals: [
+      { month: 'Jan', bp: 124, glucose: 94 },
+      { month: 'Feb', bp: 122, glucose: 92 },
+      { month: 'Mar', bp: 120, glucose: 95 },
+      { month: 'Apr', bp: 122, glucose: 93 },
+      { month: 'May', bp: 125, glucose: 96 },
+      { month: 'Jun', bp: 121, glucose: 91 },
+      { month: 'Jul', bp: 119, glucose: 90 },
+      { month: 'Aug', bp: 122, glucose: 92 },
+      { month: 'Sep', bp: 120, glucose: 93 },
+      { month: 'Oct', bp: 118, glucose: 89 },
+      { month: 'Nov', bp: 121, glucose: 91 },
+      { month: 'Dec', bp: 122, glucose: 90 }
+    ],
+    cvComment: 'Blood pressure controlled; arterial stiffness within normal limits.',
+    t2Comment: 'Normal glycemic regulation with low glycemic variability.',
+    renalComment: 'Glomerular filtration rate optimal.',
+    cvDelta: '-2.1%',
+    t2Delta: '-1.4%',
+    renalDelta: '+0.5%'
+  },
+  arthur: {
+    id: 'PT-31088',
+    name: 'Arthur Pendelton',
+    gender: 'Male',
+    biometrics: { age: 71, bmi: 28.6, hba1c: 7.2, ldl: 162, bpSys: 158, bpDia: 94, egfr: 52 },
+    historicalVitals: [
+      { month: 'Jan', bp: 152, glucose: 128 },
+      { month: 'Feb', bp: 156, glucose: 134 },
+      { month: 'Mar', bp: 160, glucose: 140 },
+      { month: 'Apr', bp: 162, glucose: 145 },
+      { month: 'May', bp: 165, glucose: 148 },
+      { month: 'Jun', bp: 159, glucose: 139 },
+      { month: 'Jul', bp: 158, glucose: 135 },
+      { month: 'Aug', bp: 155, glucose: 132 },
+      { month: 'Sep', bp: 158, glucose: 136 },
+      { month: 'Oct', bp: 160, glucose: 142 },
+      { month: 'Nov', bp: 156, glucose: 138 },
+      { month: 'Dec', bp: 158, glucose: 140 }
+    ],
+    cvComment: 'Moderate stage II hypertension; elevated pulse pressure.',
+    t2Comment: 'Marked glucose excursions; consider sodium-glucose co-transporter.',
+    renalComment: 'Stage 3a CKD markers present; nephrology review indicated.',
+    cvDelta: '+6.1%',
+    t2Delta: '+3.4%',
+    renalDelta: '-4.2%'
+  }
+};
+
+export default function App() {
+  // Navigation / View State
+  const [timeframe, setTimeframe] = useState('12M'); // '3M' | '6M' | '12M'
+  const [hoveredPointIndex, setHoveredPointIndex] = useState(3); // Default to 'Apr' as in screenshot
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [lastRecalcTime, setLastRecalcTime] = useState('04:12 UTC');
+
+  const fileInputRef = useRef(null);
+
+  // Active Patient Profile
+  const [patient, setPatient] = useState({
+    id: 'PT-98124',
+    name: 'Marcus Vance',
+    gender: 'Male',
+    cvComment: 'Elevated troponin T coupled with persistent hypertension.',
+    t2Comment: 'HbA1c stabilizing; insulin sensitivity improving.',
+    renalComment: 'GFR within standard deviation for age group.',
+    cvDelta: '+4.2%',
+    t2Delta: '-0.8%',
+    renalDelta: 'FLAT'
+  });
+
+  // Longitudinal Vitals
+  const [historicalData, setHistoricalData] = useState(DEFAULT_12M_DATA);
+
+  // Biometrics & Biomarker State (Default: Marcus Vance from reference screenshots)
+  const [biometrics, setBiometrics] = useState({
+    age: 62,
+    bmi: 31.2,
+    hba1c: 6.4,
+    ldl: 148,
+    bpSys: 143,
+    bpDia: 89,
+    egfr: 78
+  });
+
+  const [protocolStatus, setProtocolStatus] = useState({
+    statins: false,
+    followup: false,
+    nutrition: false
+  });
+
+  // Notification Toast Helper
+  const showToast = (msg, type = 'success') => {
+    setToastMessage({ text: msg, type });
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
+
+  // Filtered dataset according to active timeframe
+  const activeData = useMemo(() => {
+    if (timeframe === '3M') return historicalData.slice(Math.max(0, historicalData.length - 3));
+    if (timeframe === '6M') return historicalData.slice(Math.max(0, historicalData.length - 6));
+    return historicalData;
+  }, [timeframe, historicalData]);
+
+  // Dynamic SHAP and Risk Calculations based on Biometrics
+  const calculations = useMemo(() => {
+    let cvBase = 72;
+    if (biometrics.bmi > 30) cvBase += (biometrics.bmi - 30) * 4;
+    if (biometrics.bpSys > 135) cvBase += (biometrics.bpSys - 135) * 0.7;
+    if (biometrics.ldl > 130) cvBase += (biometrics.ldl - 130) * 0.2;
+    const cvScore = Math.min(99, Math.max(10, Math.round(cvBase)));
+
+    let t2Base = 35;
+    if (biometrics.hba1c > 6.0) t2Base += (biometrics.hba1c - 6.0) * 15;
+    if (biometrics.bmi > 28) t2Base += (biometrics.bmi - 28) * 2;
+    const t2Score = Math.min(95, Math.max(8, Math.round(t2Base)));
+
+    let renalBase = 12;
+    if (biometrics.egfr < 90) renalBase += (90 - biometrics.egfr) * 0.5;
+    const renalScore = Math.min(95, Math.max(5, Math.round(renalBase)));
+
+    const bmiShap = Math.min(48, Math.max(15, +(biometrics.bmi * 1.09).toFixed(1)));
+    const cholShap = Math.min(30, Math.max(8, +(biometrics.ldl * 0.128).toFixed(1)));
+    const ageShap = Math.min(22, Math.max(5, +(biometrics.age * 0.2).toFixed(1)));
+    const exerciseShap = -11.2;
+
+    return {
+      cvScore,
+      t2Score,
+      renalScore,
+      bmiShap,
+      cholShap,
+      ageShap,
+      exerciseShap
+    };
+  }, [biometrics]);
+
+  // Recalculate simulation handler
+  const handleRecalculate = () => {
+    const now = new Date();
+    const formatted = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} UTC`;
+    setLastRecalcTime(formatted);
+    showToast(`Model re-inferred at ${formatted}`);
+  };
+
+  // Switch Preset Patient
+  const handleLoadPreset = (key) => {
+    const p = PRESET_PATIENTS[key];
+    if (!p) return;
+    setPatient({
+      id: p.id,
+      name: p.name,
+      gender: p.gender,
+      cvComment: p.cvComment,
+      t2Comment: p.t2Comment,
+      renalComment: p.renalComment,
+      cvDelta: p.cvDelta,
+      t2Delta: p.t2Delta,
+      renalDelta: p.renalDelta
+    });
+    setBiometrics({ ...p.biometrics });
+    setHistoricalData([...p.historicalVitals]);
+    handleRecalculate();
+    setIsImportModalOpen(false);
+    showToast(`Loaded profile for ${p.name}`);
+  };
+
+  // Export JSON Dossier
+  const handleExportJSON = () => {
+    const payload = {
+      platform: 'HealthInsight AI',
+      exportTimestamp: new Date().toISOString(),
+      patient,
+      biometrics,
+      predictiveScores: {
+        cardiovascularRisk: `${calculations.cvScore}%`,
+        type2DiabetesRisk: `${calculations.t2Score}%`,
+        renalHealthRisk: `${calculations.renalScore}%`
+      },
+      shapWeights: {
+        bmi: calculations.bmiShap,
+        serumCholesterol: calculations.cholShap,
+        ageDemographic: calculations.ageShap,
+        exerciseFrequency: calculations.exerciseShap
+      },
+      clinicalProtocol: protocolStatus,
+      historicalVitals: historicalData
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `HealthInsight_${patient.id}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsExportModalOpen(false);
+    showToast('Exported complete clinical JSON dossier');
+  };
+
+  // Export CSV Biometrics & Vitals
+  const handleExportCSV = () => {
+    const rows = [
+      ['Category', 'Parameter', 'Value', 'Unit/Note'],
+      ['Patient', 'ID', patient.id, ''],
+      ['Patient', 'Name', patient.name, ''],
+      ['Biometrics', 'Age', biometrics.age, 'years'],
+      ['Biometrics', 'BMI', biometrics.bmi, 'kg/m2'],
+      ['Biometrics', 'HbA1c', biometrics.hba1c, '%'],
+      ['Biometrics', 'Serum LDL', biometrics.ldl, 'mg/dL'],
+      ['Biometrics', 'Blood Pressure', `${biometrics.bpSys}/${biometrics.bpDia}`, 'mmHg'],
+      ['Biometrics', 'eGFR', biometrics.egfr, 'mL/min/1.73m2'],
+      ['Predictions', 'Cardiovascular Risk', `${calculations.cvScore}%`, patient.cvDelta],
+      ['Predictions', 'Type II Diabetes Risk', `${calculations.t2Score}%`, patient.t2Delta],
+      ['Predictions', 'Renal Risk', `${calculations.renalScore}%`, patient.renalDelta],
+      [],
+      ['Month', 'Systolic BP (mmHg)', 'Fasting Glucose (mg/dL)', '']
+    ];
+
+    historicalData.forEach(d => {
+      rows.push([d.month, d.bp, d.glucose, 'Longitudinal snapshot']);
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(e => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `HealthInsight_${patient.id}_Biometrics.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsExportModalOpen(false);
+    showToast('Exported biometrics & vitals CSV spreadsheet');
+  };
+
+  // Trigger Print / PDF summary
+  const handlePrintReport = () => {
+    setIsExportModalOpen(false);
+    window.print();
+  };
+
+  // File Import Handler (supports JSON and CSV)
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result;
+      if (!content || typeof content !== 'string') return;
+
+      try {
+        if (file.name.endsWith('.json')) {
+          const parsed = JSON.parse(content);
+          if (parsed.biometrics) {
+            setBiometrics(prev => ({
+              ...prev,
+              ...parsed.biometrics
+            }));
+          }
+          if (parsed.patient) {
+            setPatient(prev => ({
+              ...prev,
+              ...parsed.patient
+            }));
+          }
+          if (Array.isArray(parsed.historicalVitals) && parsed.historicalVitals.length > 0) {
+            setHistoricalData(parsed.historicalVitals);
+          }
+          handleRecalculate();
+          setIsImportModalOpen(false);
+          showToast(`Successfully imported JSON dossier: ${file.name}`);
+        } else if (file.name.endsWith('.csv')) {
+          const lines = content.split('\n').filter(Boolean);
+          const newBio = { ...biometrics };
+          lines.forEach(line => {
+            const parts = line.split(',').map(p => p.trim());
+            if (parts.length >= 3) {
+              const param = parts[1].toLowerCase();
+              const val = parseFloat(parts[2]);
+              if (!isNaN(val)) {
+                if (param.includes('age')) newBio.age = val;
+                if (param.includes('bmi')) newBio.bmi = val;
+                if (param.includes('hba1c')) newBio.hba1c = val;
+                if (param.includes('ldl')) newBio.ldl = val;
+                if (param.includes('egfr')) newBio.egfr = val;
+              }
+              if (param.includes('blood pressure') && parts[2].includes('/')) {
+                const [sys, dia] = parts[2].split('/').map(Number);
+                if (!isNaN(sys)) newBio.bpSys = sys;
+                if (!isNaN(dia)) newBio.bpDia = dia;
+              }
+            }
+          });
+          setBiometrics(newBio);
+          handleRecalculate();
+          setIsImportModalOpen(false);
+          showToast(`Extracted parameters from ${file.name}`);
+        } else {
+          showToast('Unsupported file type. Please upload .json or .csv', 'error');
+        }
+      } catch (err) {
+        showToast('Error parsing file: ' + err.message, 'error');
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // SVG Chart dimensions and projection mapping
+  const chartWidth = 920;
+  const chartHeight = 240;
+  const paddingX = 40;
+  const paddingY = 24;
+
+  const yMin = 0;
+  const yMax = 160;
+
+  const getYCoord = (val) => {
+    const usableH = chartHeight - paddingY * 2;
+    return chartHeight - paddingY - ((val - yMin) / (yMax - yMin)) * usableH;
+  };
+
+  const getXCoord = (index, length) => {
+    const usableW = chartWidth - paddingX * 2;
+    return paddingX + (index / (length - 1)) * usableW;
+  };
+
+  // Generate smooth SVG curve path and area
+  const { linePath, areaPath } = useMemo(() => {
+    if (activeData.length === 0) return { linePath: '', areaPath: '' };
+
+    const pts = activeData.map((d, i) => ({
+      x: getXCoord(i, activeData.length),
+      y: getYCoord(d.bp)
+    }));
+
+    let path = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = i > 0 ? pts[i - 1] : pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = i !== pts.length - 2 ? pts[i + 2] : p2;
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+
+    const baselineY = getYCoord(0);
+    const firstX = pts[0].x;
+    const lastX = pts[pts.length - 1].x;
+    const area = `${path} L ${lastX} ${baselineY} L ${firstX} ${baselineY} Z`;
+
+    return { linePath: path, areaPath: area };
+  }, [activeData]);
+
+  // Selected or hovered point on chart
+  const currentHovered = activeData[Math.min(hoveredPointIndex, activeData.length - 1)] || activeData[0];
+  const currentHoveredX = getXCoord(
+    Math.min(hoveredPointIndex, activeData.length - 1),
+    activeData.length
+  );
+  const currentHoveredY = getYCoord(currentHovered?.bp || 140);
+
+  return (
+    <div className="min-h-screen bg-[#f3f5f8] text-[#0f172a] font-sans antialiased flex flex-col justify-between selection:bg-rose-500 selection:text-white relative">
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-[#0f172a] text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-200">
+          {toastMessage.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-400" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          )}
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Hidden File Input for Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".json,.csv"
+        className="hidden"
+      />
+
+      {/* Top Application Workspace */}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-7 lg:py-9 space-y-7">
+        
+        {/* Top Header Row with Title, Patient Badge & Import/Export Actions */}
+        <header className="flex flex-col md:flex-row md:items-baseline justify-between gap-4 pb-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl sm:text-[28px] font-extrabold tracking-tight text-[#0f172a]">
+              Predictive Risk Assessment
+            </h1>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 shadow-sm">
+              <User className="w-3.5 h-3.5 text-slate-400" />
+              <span>{patient.name}</span>
+              <span className="text-[10px] font-mono text-slate-400">({patient.id})</span>
+            </div>
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+              title="Edit Biometrics Dossier"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Import Button */}
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5 text-slate-500" />
+              <span>Import</span>
+            </button>
+
+            {/* Export Button */}
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>Export</span>
+            </button>
+
+            {/* Timestamp & Recalc */}
+            <div className="text-xs font-mono tracking-wider text-slate-400 font-semibold uppercase flex items-center gap-2 ml-1 sm:ml-2">
+              <span>LAST RE-CALC: {lastRecalcTime}</span>
+              <button 
+                onClick={handleRecalculate}
+                className="hover:text-slate-600 transition-colors"
+                title="Trigger Model Re-Calculation"
+              >
+                <RefreshCw className="w-3.5 h-3.5 inline text-slate-400 hover:rotate-180 transition-transform duration-500" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* 3 Top Primary Predictive Risk Cards */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+          
+          {/* 1. CARDIOVASCULAR CARD */}
+          <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80 border-l-[5px] border-l-red-500 flex flex-col justify-between transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <div>
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                CARDIOVASCULAR
+              </span>
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-4xl sm:text-[42px] font-extrabold text-[#0f172a] leading-none tracking-tight">
+                  {calculations.cvScore}%
+                </span>
+                <span className="text-xs font-bold text-red-500 flex items-center font-mono">
+                  {patient.cvDelta}
+                </span>
+              </div>
+            </div>
+
+            <div className="my-5">
+              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-red-500 h-full rounded-full transition-all duration-700" 
+                  style={{ width: `${calculations.cvScore}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs italic text-slate-500 font-normal leading-relaxed">
+              &ldquo;{patient.cvComment}&rdquo;
+            </p>
+          </div>
+
+          {/* 2. TYPE II DIABETES CARD */}
+          <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80 border-l-[5px] border-l-amber-500 flex flex-col justify-between transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <div>
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                TYPE II DIABETES
+              </span>
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-4xl sm:text-[42px] font-extrabold text-[#0f172a] leading-none tracking-tight">
+                  {calculations.t2Score}%
+                </span>
+                <span className="text-xs font-bold text-emerald-600 flex items-center font-mono">
+                  {patient.t2Delta}
+                </span>
+              </div>
+            </div>
+
+            <div className="my-5">
+              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-amber-500 h-full rounded-full transition-all duration-700" 
+                  style={{ width: `${calculations.t2Score}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs italic text-slate-500 font-normal leading-relaxed">
+              &ldquo;{patient.t2Comment}&rdquo;
+            </p>
+          </div>
+
+          {/* 3. RENAL HEALTH CARD */}
+          <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80 border-l-[5px] border-l-emerald-600 flex flex-col justify-between transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <div>
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                RENAL HEALTH
+              </span>
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-4xl sm:text-[42px] font-extrabold text-[#0f172a] leading-none tracking-tight">
+                  {calculations.renalScore}%
+                </span>
+                <span className="text-xs font-bold text-slate-500 flex items-center font-mono tracking-tight">
+                  {patient.renalDelta}
+                </span>
+              </div>
+            </div>
+
+            <div className="my-5">
+              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-emerald-600 h-full rounded-full transition-all duration-700" 
+                  style={{ width: `${calculations.renalScore}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs italic text-slate-500 font-normal leading-relaxed">
+              &ldquo;{patient.renalComment}&rdquo;
+            </p>
+          </div>
+        </section>
+
+        {/* Historical Vitals Longitudinal Chart Card */}
+        <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80 relative">
+          
+          <div className="flex flex-row items-start justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-base font-bold text-[#0f172a] tracking-tight uppercase">
+                HISTORICAL VITALS
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                Longitudinal Data · {timeframe}
+              </p>
+            </div>
+
+            <div className="inline-flex rounded-md bg-slate-100 p-0.5 text-xs font-medium border border-slate-200/60">
+              {['3M', '6M', '12M'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    setTimeframe(t);
+                    setHoveredPointIndex(t === '12M' ? 3 : 1);
+                  }}
+                  className={`px-3 py-1 rounded text-[11px] font-bold tracking-wide transition-all ${
+                    timeframe === t
+                      ? 'bg-[#0f172a] text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* SVG Chart Area */}
+          <div className="w-full relative select-none">
+            <svg
+              className="w-full h-56 sm:h-64 overflow-visible"
+              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fca5a5" stopOpacity="0.38" />
+                  <stop offset="70%" stopColor="#fee2e2" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              {/* Horizontal Y-Axis Dotted Gridlines & Numeric Labels */}
+              {[160, 120, 80, 40, 0].map((val) => {
+                const y = getYCoord(val);
+                return (
+                  <g key={val}>
+                    <line
+                      x1={paddingX}
+                      y1={y}
+                      x2={chartWidth - paddingX}
+                      y2={y}
+                      stroke="#e2e8f0"
+                      strokeWidth="1"
+                      strokeDasharray={val === 0 ? "0" : "3 3"}
+                    />
+                    <text
+                      x={paddingX - 12}
+                      y={y + 3.5}
+                      textAnchor="end"
+                      className="text-[10px] fill-slate-400 font-mono font-medium"
+                    >
+                      {val}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Shaded Area Fill */}
+              {areaPath && (
+                <path d={areaPath} fill="url(#areaGradient)" />
+              )}
+
+              {/* Main Smooth Blood Pressure Curve */}
+              {linePath && (
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+
+              {/* Vertical Reference Indicator Line for Active Hover Point */}
+              {currentHovered && (
+                <line
+                  x1={currentHoveredX}
+                  y1={getYCoord(160)}
+                  x2={currentHoveredX}
+                  y2={getYCoord(0)}
+                  stroke="#cbd5e1"
+                  strokeWidth="1"
+                  strokeDasharray="2 2"
+                />
+              )}
+
+              {/* Active Marker Point on the Curve */}
+              {currentHovered && (
+                <circle
+                  cx={currentHoveredX}
+                  cy={currentHoveredY}
+                  r="4.5"
+                  fill="#ef4444"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  className="shadow-sm transition-all duration-150"
+                />
+              )}
+
+              {/* Interactive Hover Columns */}
+              {activeData.map((d, i) => {
+                const x = getXCoord(i, activeData.length);
+                const colW = (chartWidth - paddingX * 2) / activeData.length;
+                return (
+                  <rect
+                    key={d.month}
+                    x={x - colW / 2}
+                    y={paddingY}
+                    width={colW}
+                    height={chartHeight - paddingY * 2}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredPointIndex(i)}
+                    onClick={() => setHoveredPointIndex(i)}
+                  />
+                );
+              })}
+            </svg>
+
+            {/* Custom Tooltip Badge */}
+            {currentHovered && (
+              <div
+                className="absolute pointer-events-none transition-all duration-150 z-20"
+                style={{
+                  left: `${(currentHoveredX / chartWidth) * 100}%`,
+                  top: `${(currentHoveredY / chartHeight) * 100}%`,
+                  transform: 'translate(-50%, -125%)'
+                }}
+              >
+                <div className="bg-[#111827] text-white px-3.5 py-2 rounded-lg shadow-xl border border-slate-700/80 text-left min-w-[100px]">
+                  <div className="text-[11px] font-bold text-slate-200">
+                    {currentHovered.month}
+                  </div>
+                  <div className="text-xs font-mono font-bold text-red-500 mt-0.5 tracking-tight">
+                    SYS BP : {currentHovered.bp}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* X-Axis Month Markers */}
+            <div 
+              className="flex justify-between text-slate-400 text-xs font-medium pt-2 select-none"
+              style={{ paddingLeft: `${(paddingX / chartWidth) * 100}%`, paddingRight: `${(paddingX / chartWidth) * 100}%` }}
+            >
+              {activeData.map((d, i) => (
+                <button
+                  key={d.month}
+                  onClick={() => setHoveredPointIndex(i)}
+                  className={`text-[11px] font-sans transition-colors ${
+                    i === hoveredPointIndex ? 'text-slate-800 font-bold' : 'hover:text-slate-600'
+                  }`}
+                >
+                  {d.month}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Lower Two-Column Section: Influence Matrix vs Clinical Protocol & Biometrics */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          
+          {/* Column 1: INFLUENCE MATRIX (SHAP) Dark Slate Card */}
+          <div className="bg-[#0f1724] text-white rounded-2xl p-6 sm:p-7 shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-slate-800 flex flex-col justify-between">
+            <div>
+              <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase mb-6">
+                INFLUENCE MATRIX (SHAP)
+              </h3>
+
+              <div className="space-y-5 text-xs">
+                {/* 1. Body Mass Index */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-slate-100 text-[13px]">
+                      Body Mass Index ({biometrics.bmi})
+                    </span>
+                    <span className="font-mono font-bold text-red-500 text-xs">
+                      +{calculations.bmiShap}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#1e293b] h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-red-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, calculations.bmiShap * 2.4)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Serum Cholesterol */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-slate-100 text-[13px]">
+                      Serum Cholesterol
+                    </span>
+                    <span className="font-mono font-bold text-red-500 text-xs">
+                      +{calculations.cholShap}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#1e293b] h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-red-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, calculations.cholShap * 2.8)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Age / Demographic */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-slate-100 text-[13px]">
+                      Age / Demographic
+                    </span>
+                    <span className="font-mono font-bold text-amber-500 text-xs">
+                      +{calculations.ageShap}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#1e293b] h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, calculations.ageShap * 3.3)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Exercise Frequency */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-slate-100 text-[13px]">
+                      Exercise Frequency
+                    </span>
+                    <span className="font-mono font-bold text-emerald-400 text-xs">
+                      {calculations.exerciseShap}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#1e293b] h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: '28%' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-5 border-t border-slate-800/80">
+              <p className="text-[12px] text-slate-400 leading-relaxed">
+                The model attributes high cardiovascular risk primarily to metabolic markers and lifestyle factors, while exercise consistency provides a marginal defensive buffer.
+              </p>
+            </div>
+          </div>
+
+          {/* Column 2: CLINICAL PROTOCOL & BIOMETRICS Stack */}
+          <div className="space-y-6">
+            
+            {/* CLINICAL PROTOCOL Card */}
+            <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80">
+              <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase mb-4">
+                CLINICAL PROTOCOL
+              </h3>
+
+              <div className="space-y-3">
+                <div 
+                  onClick={() => setProtocolStatus(p => ({ ...p, statins: !p.statins }))}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                    protocolStatus.statins 
+                      ? 'bg-slate-50 border-slate-300 opacity-60' 
+                      : 'bg-[#f8fafc] border-slate-200/90 hover:border-slate-300 hover:bg-[#f1f5f9]'
+                  }`}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-[13px] font-bold text-[#0f172a] flex items-center justify-between">
+                      <span className={protocolStatus.statins ? 'line-through text-slate-500' : ''}>Statins Adjustment</span>
+                      {protocolStatus.statins && <span className="text-[10px] text-emerald-600 font-mono font-bold">COMPLETED</span>}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Immediate review of dosage based on current lipid profile.
+                    </p>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setProtocolStatus(p => ({ ...p, followup: !p.followup }))}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                    protocolStatus.followup 
+                      ? 'bg-slate-50 border-slate-300 opacity-60' 
+                      : 'bg-[#f8fafc] border-slate-200/90 hover:border-slate-300 hover:bg-[#f1f5f9]'
+                  }`}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-[13px] font-bold text-[#0f172a] flex items-center justify-between">
+                      <span className={protocolStatus.followup ? 'line-through text-slate-500' : ''}>Follow-up Panel</span>
+                      {protocolStatus.followup && <span className="text-[10px] text-emerald-600 font-mono font-bold">COMPLETED</span>}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Schedule echo-cardiogram within 72 hours.
+                    </p>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setProtocolStatus(p => ({ ...p, nutrition: !p.nutrition }))}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                    protocolStatus.nutrition 
+                      ? 'bg-slate-50 border-slate-300 opacity-60' 
+                      : 'bg-[#f8fafc] border-slate-200/90 hover:border-slate-300 hover:bg-[#f1f5f9]'
+                  }`}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300 mt-1.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-[13px] font-bold text-[#0f172a] flex items-center justify-between">
+                      <span className={protocolStatus.nutrition ? 'line-through text-slate-500' : ''}>Nutrition Consult</span>
+                      {protocolStatus.nutrition && <span className="text-[10px] text-emerald-600 font-mono font-bold">COMPLETED</span>}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Refer for Mediterranean-diet counseling within 2 weeks.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* BIOMETRICS Card */}
+            <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-200/80">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
+                  BIOMETRICS
+                </h3>
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-medium"
+                >
+                  Edit Values
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    AGE
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.age} <span className="text-base font-semibold text-slate-700">y</span>
+                  </div>
+                </div>
+
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    BMI
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.bmi}
+                  </div>
+                </div>
+
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    HBA1C
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.hba1c}%
+                  </div>
+                </div>
+
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    LDL
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.ldl}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    BP
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.bpSys}/{biometrics.bpDia}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    EGFR
+                  </span>
+                  <div className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+                    {biometrics.egfr}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+      </div>
+
+      {/* IMPORT DIALOG MODAL */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-[#0f172a] uppercase tracking-wide flex items-center gap-2">
+                <Upload className="w-4 h-4 text-indigo-600" />
+                Import Patient Clinical Dossier
+              </h4>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* File Drag / Selector */}
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl p-5 text-center cursor-pointer bg-slate-50/50 hover:bg-indigo-50/30 transition-colors"
+            >
+              <Upload className="w-7 h-7 mx-auto text-indigo-500 mb-2" />
+              <p className="text-xs font-bold text-slate-800">Click to upload JSON or CSV file</p>
+              <p className="text-[11px] text-slate-400 mt-1">EHR patient biometrics, lab values, or vitals</p>
+            </div>
+
+            {/* Quick Sample Patients Pre-loader */}
+            <div>
+              <div className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Or Load Benchmark Case Study:
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleLoadPreset('marcus')}
+                  className="w-full p-2.5 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50/20 text-left transition-all flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-[#0f172a]">Marcus Vance (62y)</span>
+                    <span className="text-slate-400 block text-[11px]">High Cardiovascular Risk (82%), BMI 31.2</span>
+                  </div>
+                  <span className="text-[10px] font-bold font-mono text-red-500 px-2 py-0.5 rounded bg-red-100/60">Load</span>
+                </button>
+
+                <button
+                  onClick={() => handleLoadPreset('elena')}
+                  className="w-full p-2.5 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/20 text-left transition-all flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-[#0f172a]">Elena Rostova (48y)</span>
+                    <span className="text-slate-400 block text-[11px]">Low Overall Risk, Normal Glycemic Control</span>
+                  </div>
+                  <span className="text-[10px] font-bold font-mono text-emerald-600 px-2 py-0.5 rounded bg-emerald-100/60">Load</span>
+                </button>
+
+                <button
+                  onClick={() => handleLoadPreset('arthur')}
+                  className="w-full p-2.5 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50/20 text-left transition-all flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-[#0f172a]">Arthur Pendelton (71y)</span>
+                    <span className="text-slate-400 block text-[11px]">Stage 3a CKD, Diabetes Mellitus (HbA1c 7.2%)</span>
+                  </div>
+                  <span className="text-[10px] font-bold font-mono text-amber-600 px-2 py-0.5 rounded bg-amber-100/60">Load</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXPORT DIALOG MODAL */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-[#0f172a] uppercase tracking-wide flex items-center gap-2">
+                <Download className="w-4 h-4 text-indigo-600" />
+                Export Clinical Dossier & Telemetry
+              </h4>
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Select export destination format for <strong className="text-slate-800">{patient.name}</strong> ({patient.id}).
+            </p>
+
+            <div className="space-y-3">
+              {/* Option 1: JSON */}
+              <button
+                onClick={handleExportJSON}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/30 text-left transition-all flex items-center gap-3.5 group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition-transform">
+                  <FileJson className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0f172a]">Full Clinical JSON Dossier</div>
+                  <div className="text-[11px] text-slate-400">Complete raw EHR, SHAP weights, and model states</div>
+                </div>
+              </button>
+
+              {/* Option 2: CSV */}
+              <button
+                onClick={handleExportCSV}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 text-left transition-all flex items-center gap-3.5 group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0f172a]">Biometrics & Vitals CSV</div>
+                  <div className="text-[11px] text-slate-400">Excel / Spreadsheet compatible longitudinal table</div>
+                </div>
+              </button>
+
+              {/* Option 3: Print / PDF */}
+              <button
+                onClick={handlePrintReport}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-slate-800 hover:bg-slate-50 text-left transition-all flex items-center gap-3.5 group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 group-hover:scale-105 transition-transform">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0f172a]">Print / Save as PDF Summary</div>
+                  <div className="text-[11px] text-slate-400">Clean print-ready clinical chart consultation format</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Biometrics Dossier Live Editor Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-[#0f172a] uppercase tracking-wide">
+                Adjust Patient Biometrics
+              </h4>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">Age (Years)</label>
+                  <input
+                    type="number"
+                    value={biometrics.age}
+                    onChange={(e) => setBiometrics({ ...biometrics, age: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">BMI</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={biometrics.bmi}
+                    onChange={(e) => setBiometrics({ ...biometrics, bmi: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">Systolic BP (mmHg)</label>
+                  <input
+                    type="number"
+                    value={biometrics.bpSys}
+                    onChange={(e) => setBiometrics({ ...biometrics, bpSys: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">Diastolic BP (mmHg)</label>
+                  <input
+                    type="number"
+                    value={biometrics.bpDia}
+                    onChange={(e) => setBiometrics({ ...biometrics, bpDia: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">HbA1c (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={biometrics.hba1c}
+                    onChange={(e) => setBiometrics({ ...biometrics, hba1c: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-medium block mb-1">Serum LDL (mg/dL)</label>
+                  <input
+                    type="number"
+                    value={biometrics.ldl}
+                    onChange={(e) => setBiometrics({ ...biometrics, ldl: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-medium block mb-1">eGFR (mL/min/1.73m²)</label>
+                <input
+                  type="number"
+                  value={biometrics.egfr}
+                  onChange={(e) => setBiometrics({ ...biometrics, egfr: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                handleRecalculate();
+                setIsEditModalOpen(false);
+              }}
+              className="w-full py-2.5 bg-[#0f172a] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
+            >
+              Update Telemetry & Re-infer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent Bottom Status & System Bar */}
+      <footer className="border-t border-slate-200/80 bg-white/90 backdrop-blur-sm px-4 sm:px-8 py-3 text-[11px] font-mono text-slate-500 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <span>CONNECTED NODES: <strong className="text-slate-800">12</strong></span>
+          <span>SYSTEM HEALTH: <strong className="text-slate-800">NOMINAL</strong></span>
+          <span>SECURE TUNNEL: <strong className="text-slate-800">ACTIVE</strong></span>
+        </div>
+
+        <div className="flex items-center gap-5 font-sans text-xs">
+          <button 
+            onClick={() => setIsEditModalOpen(true)}
+            className="text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            Settings
+          </button>
+          <button 
+            onClick={() => showToast('Model Ingestion Logs: 0 anomalies detected. Inference latency: 12.4ms.')}
+            className="text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            Logs
+          </button>
+          <button 
+            onClick={() => showToast('HealthInsight Help Desk: Direct clinician hotline active.')}
+            className="text-[#0f172a] font-bold hover:underline transition-colors"
+          >
+            Help Desk
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
